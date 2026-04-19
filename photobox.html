@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rizka Soft Photobox 📸</title>
+    <style>
+        :root { --bg: #f8f9fa; --text: #333; --accent: #ffb7c5; }
+        body { margin: 0; background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; text-align: center; }
+        
+        #app { padding: 20px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+        
+        /* Frame Kamera */
+        #camBox { 
+            position: relative; width: 100%; max-width: 380px; aspect-ratio: 3/4; 
+            background: #000; border-radius: 30px; overflow: hidden; 
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1); border: 8px solid #fff;
+        }
+        video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); transition: 0.3s; }
+
+        /* Pilihan Warna Bingkai (Soft Colors) */
+        .label { font-size: 12px; color: #888; margin-top: 20px; text-transform: uppercase; letter-spacing: 1px; }
+        #colorGrid { display: flex; gap: 15px; margin-top: 10px; justify-content: center; }
+        .c-dot { width: 35px; height: 35px; border-radius: 50%; border: 3px solid #eee; cursor: pointer; transition: 0.3s; }
+        .c-dot.active { border-color: var(--text); transform: scale(1.1); }
+
+        /* Filter Bar (Simple & Clean) */
+        #filterBar { display: flex; gap: 10px; margin-top: 15px; justify-content: center; }
+        .f-item { padding: 8px 15px; background: #fff; border-radius: 20px; border: 1px solid #ddd; cursor: pointer; font-size: 12px; font-weight: 500; }
+        .f-item.active { background: var(--text); color: #fff; border-color: var(--text); }
+
+        /* Shutter Button */
+        #snapBtn { 
+            margin-top: 30px; background: var(--text); color: #fff; border: none; 
+            padding: 15px 50px; font-size: 16px; font-weight: bold; border-radius: 50px; 
+            cursor: pointer; box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+
+        /* Modal Result */
+        #modal { position: fixed; inset: 0; background: rgba(255,255,255,0.98); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 100; padding: 20px; }
+        #strip { padding: 15px; padding-bottom: 40px; width: 180px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+        #strip img { width: 100%; margin-bottom: 8px; border-radius: 2px; }
+        .m-btns { margin-top: 20px; display: flex; gap: 10px; }
+        .btn { padding: 12px 25px; border-radius: 30px; border: none; font-weight: bold; cursor: pointer; }
+
+        #timer { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 80px; font-weight: bold; color: #fff; display: none; z-index: 10; }
+        .flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 20; }
+        .do-flash { animation: fl 0.2s; }
+        @keyframes fl { 0% { opacity: 1; } 100% { opacity: 0; } }
+    </style>
+</head>
+<body>
+
+<div id="app">
+    <h2 style="font-weight: 400; letter-spacing: 2px;">SOFT<span style="font-weight: 700;">BOOTH</span></h2>
+    
+    <div id="camBox">
+        <video id="v" autoplay playsinline></video>
+        <div id="timer"></div>
+        <div id="flash" class="flash"></div>
+    </div>
+
+    <div class="label">Pilih Warna Bingkai</div>
+    <div id="colorGrid">
+        <div class="c-dot active" style="background: #ffffff;" onclick="setC('#ffffff', this)"></div> <div class="c-dot" style="background: #fdf2f4;" onclick="setC('#fdf2f4', this)"></div> <div class="c-dot" style="background: #eef5ff;" onclick="setC('#eef5ff', this)"></div> <div class="c-dot" style="background: #f0f0f0;" onclick="setC('#f0f0f0', this)"></div> <div class="c-dot" style="background: #333333;" onclick="setC('#333333', this)"></div> </div>
+
+    <div class="label">Pilih Filter</div>
+    <div id="filterBar">
+        <div class="f-item active" onclick="setF('none', this)">Normal</div>
+        <div class="f-item" onclick="setF('brightness(1.1) saturate(1.2) contrast(0.9) blur(1px)', this)">Dreamy</div>
+        <div class="f-item" onclick="setF('grayscale(1) contrast(1.1)', this)">B&W</div>
+        <div class="f-item" onclick="setF('sepia(0.3) brightness(0.9)', this)">Retro</div>
+    </div>
+
+    <button id="snapBtn" onclick="startShoot()">AMBIL FOTO 🎞️</button>
+</div>
+
+<div id="modal">
+    <div id="strip"></div>
+    <div class="m-btns">
+        <button class="btn" style="background:#333; color:#fff;" onclick="dl()">SIMPAN</button>
+        <button class="btn" style="background:#eee;" onclick="closeM()">ULANGI</button>
+    </div>
+</div>
+
+<canvas id="c" style="display:none;"></canvas>
+
+<script>
+    const v = document.getElementById('v'), c = document.getElementById('c');
+    const timer = document.getElementById('timer'), flash = document.getElementById('flash');
+    const modal = document.getElementById('modal'), strip = document.getElementById('strip');
+    
+    let photos = [], currentF = 'none', frameColor = '#ffffff', finalImg = "";
+
+    navigator.mediaDevices.getUserMedia({ video: true }).then(s => v.srcObject = s);
+
+    function setC(color, el) {
+        frameColor = color;
+        document.querySelectorAll('.c-dot').forEach(d => d.classList.remove('active'));
+        el.classList.add('active');
+    }
+
+    function setF(f, el) {
+        currentF = f;
+        v.style.filter = f;
+        document.querySelectorAll('.f-item').forEach(i => i.classList.remove('active'));
+        el.classList.add('active');
+    }
+
+    async function startShoot() {
+        photos = [];
+        for (let i = 0; i < 4; i++) {
+            timer.style.display = "block";
+            for (let t = 3; t > 0; t--) { timer.innerText = t; await new Promise(r => setTimeout(r, 800)); }
+            timer.style.display = "none";
+            flash.classList.add('do-flash');
+            snap();
+            await new Promise(r => setTimeout(r, 200));
+            flash.classList.remove('do-flash');
+        }
+        render();
+    }
+
+    function snap() {
+        const temp = document.createElement('canvas');
+        temp.width = 640; temp.height = 480;
+        const ctx = temp.getContext('2d');
+        ctx.filter = v.style.filter;
+        ctx.translate(640, 0); ctx.scale(-1, 1);
+        ctx.drawImage(v, 0, 0, 640, 480);
+        photos.push(temp.toDataURL('image/jpeg'));
+    }
+
+    function render() {
+        const sC = document.createElement('canvas');
+        sC.width = 400; sC.height = (300 * 4) + 120;
+        const ctx = sC.getContext('2d');
+        ctx.fillStyle = frameColor;
+        ctx.fillRect(0, 0, sC.width, sC.height);
+
+        let y = 20;
+        strip.innerHTML = "";
+        photos.forEach((src, i) => {
+            const img = new Image();
+            img.onload = () => {
+                ctx.drawImage(img, 25, y, 350, 262);
+                y += 280;
+                if (i === 3) {
+                    ctx.fillStyle = (frameColor === '#333333') ? "#fff" : "#888";
+                    ctx.font = "italic 16px Arial"; ctx.textAlign = "center";
+                    ctx.fillText("RIZKA PHOTO STUDIO", 200, sC.height - 35);
+                    finalImg = sC.toDataURL('image/png');
+                    strip.innerHTML = photos.map(p => `<img src="${p}">`).join('');
+                    strip.style.background = frameColor;
+                    modal.style.display = "flex";
+                }
+            };
+            img.src = src;
+        });
+    }
+
+    function dl() {
+        const a = document.createElement('a'); a.href = finalImg;
+        a.download = `soft-booth-${Date.now()}.png`; a.click();
+    }
+    function closeM() { modal.style.display = "none"; }
+</script>
+
+</body>
+</html>
